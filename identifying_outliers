@@ -1,0 +1,99 @@
+-- check the data
+SELECT * FROM employee_salaries
+ORDER BY department
+
+-- group by department and get standard deviation and average (where salary >= 10000)
+WITH department_stats AS
+(
+SELECT department,
+		STDEV(salary) AS standard_deviation,
+		AVG(salary) AS average_salary
+FROM employee_salaries
+WHERE salary >= 10000
+GROUP BY department
+)
+
+-- create department ouliers
+SELECT emp.department,
+		emp.salary,
+		dps.standard_deviation,
+		dps.average_salary,
+		(emp.salary - dps.average_salary) / dps.standard_deviation AS z_score
+FROM employee_salaries AS emp
+JOIN department_stats AS dps
+	ON emp.department = dps.department
+WHERE emp.salary >= 10000;
+
+-- join 2 tables so that i can select what i need
+WITH department_stats AS
+(
+SELECT department,
+		STDEV(salary) AS standard_deviation,
+		AVG(salary) AS average_salary
+FROM employee_salaries
+WHERE salary >= 10000
+GROUP BY department
+),
+
+department_outlier AS
+(
+SELECT emp.department,
+		emp.salary,
+		dps.standard_deviation,
+		dps.average_salary,
+		(emp.salary - dps.average_salary) / dps.standard_deviation AS z_score
+FROM employee_salaries AS emp
+JOIN department_stats AS dps
+	ON emp.department = dps.department
+WHERE emp.salary >= 10000
+)
+
+SELECT dps.department,
+		dps.standard_deviation,
+		dps.average_salary,
+		dps.standard_deviation / dps.average_salary AS coefficient_of_variation,
+		SUM(CASE WHEN (dpo.z_score > 1.96 OR dpo.z_score < -1.96)
+					THEN 1
+					ELSE 0 END) AS outlier_count
+FROM department_stats AS dps
+LEFT JOIN department_outlier AS dpo
+	ON dps.department = dpo.department
+GROUP BY dps.department, dps.standard_deviation, dps.average_salary, dps.standard_deviation / dps.average_salary
+ORDER BY dps.department;
+
+--clean up the data
+WITH department_stats AS
+(
+SELECT department,
+		STDEV(salary) AS standard_deviation,
+		AVG(salary) AS average_salary
+FROM employee_salaries
+WHERE salary >= 10000
+GROUP BY department
+),
+
+department_outlier AS
+(
+SELECT emp.department,
+		emp.salary,
+		dps.standard_deviation,
+		dps.average_salary,
+		(emp.salary - dps.average_salary) / dps.standard_deviation AS z_score
+FROM employee_salaries AS emp
+JOIN department_stats AS dps
+	ON emp.department = dps.department
+WHERE emp.salary >= 10000
+)
+
+SELECT dps.department,
+		ROUND(dps.standard_deviation,2) AS standard_deviation,
+		ROUND(dps.average_salary,2) AS average_salary,
+		ROUND(dps.standard_deviation / dps.average_salary,2)*100 AS coefficient_of_variation,
+		SUM(CASE WHEN (dpo.z_score > 1.96 OR dpo.z_score < -1.96)
+					THEN 1
+					ELSE 0 END) AS outlier_count
+FROM department_stats AS dps
+LEFT JOIN department_outlier AS dpo
+	ON dps.department = dpo.department
+GROUP BY dps.department, dps.standard_deviation, dps.average_salary, dps.standard_deviation / dps.average_salary
+ORDER BY coefficient_of_variation DESC;
